@@ -122,10 +122,7 @@ This means you can place an attachment file anywhere within your vault, replace 
 
 Share your  wishes and ideas about this software or buy me a coffee (or hot chocolate)
 
-
-<a href="https://www.buymeacoffee.com/sergeikorneev"><img src="https://img.buymeacoffee.com/button-api/?text=Buy me a coffee&emoji=&slug=sergeikorneev&button_colour=5F7FFF&font_colour=ffffff&font_family=Inter&outline_colour=000000&coffee_colour=FFDD00"></a>
-
-
+<a href="https://www.buymeacoffee.com/sergeikorneev" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;"></a>
 
 ## Credits
 
