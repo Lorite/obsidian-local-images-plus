@@ -42,6 +42,24 @@ export default class SettingTab extends PluginSettingTab {
                     el.show()
                 }
             }
+
+            if (el.getAttr("class").includes("obs_folder_mirror_set")) {
+                if (this.plugin.settings.saveAttE === "obsFolder") {
+                    el.show()
+                }
+                else {
+                    el.hide()
+                }
+            }
+
+            if (el.getAttr("class").includes("obs_folder_mirror_pattern_set")) {
+                if (this.plugin.settings.saveAttE === "obsFolder" && this.plugin.settings.mirrorObsFolderForMatchedNotes) {
+                    el.show()
+                }
+                else {
+                    el.hide()
+                }
+            }
         })
     }
 
@@ -485,6 +503,47 @@ export default class SettingTab extends PluginSettingTab {
                         this.plugin.settings.saveAttE = value
                         this.displSw(containerEl)
 
+                        await this.plugin.saveSettings()
+                    })
+            )
+
+        new Setting(containerEl)
+            .setName("Mirror source note subfolders in Obsidian attachment folder")
+            .setDesc("When enabled, notes matching the pattern below will keep their folder structure under the Obsidian attachment folder.")
+            .setClass("obs_folder_mirror_set")
+            .addToggle((toggle) =>
+                toggle
+                    .setValue(this.plugin.settings.mirrorObsFolderForMatchedNotes)
+                    .onChange(async (value) => {
+                        this.plugin.settings.mirrorObsFolderForMatchedNotes = value
+                        this.displSw(containerEl)
+                        await this.plugin.saveSettings()
+                    })
+            )
+
+        new Setting(containerEl)
+            .setName("Mirror pattern for note folders")
+            .setDesc("Regex for note parent folders. Default media/.*. Example: media/articles|media/videos")
+            .setClass("obs_folder_mirror_set obs_folder_mirror_pattern_set")
+            .addText((text) =>
+                text
+                    .setValue(this.plugin.settings.mirrorObsFolderMatchPattern)
+                    .onChange(async (value) => {
+
+                        const trimmedValue = trimAny(value, [" "])
+                        if (trimmedValue === "") {
+                            displayError("Pattern cannot be empty.")
+                            return
+                        }
+
+                        if (!safeRegex(trimmedValue)) {
+                            displayError(
+                                "Unsafe regex! https://www.npmjs.com/package/safe-regex"
+                            )
+                            return
+                        }
+
+                        this.plugin.settings.mirrorObsFolderMatchPattern = trimmedValue
                         await this.plugin.saveSettings()
                     })
             )

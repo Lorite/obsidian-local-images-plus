@@ -380,6 +380,8 @@ export async function getMDir(app: App,
   const obsmediadir = app.vault.getConfig("attachmentFolderPath");
   const mediadir = settings.mediaRootDir;
   var attdir = settings.saveAttE;
+  const mirrorPattern = settings.mirrorObsFolderMatchPattern || "media/.*";
+  const shouldTryMirror = settings.mirrorObsFolderForMatchedNotes === true;
   if (defaultdir) { attdir = "" };
   let root = "/";
 
@@ -412,6 +414,17 @@ export async function getMDir(app: App,
       }
       else {
         root = normalizePath(obsmediadir);
+      }
+
+      if (shouldTryMirror && notePath !== "") {
+        try {
+          const noteParentMatches = new RegExp(mirrorPattern).test(notePath);
+          if (noteParentMatches) {
+            root = pathJoin([root, notePath]);
+          }
+        } catch (e) {
+          logError("Mirror pattern is invalid: " + mirrorPattern + "\r\n" + e, false);
+        }
       }
 
   }

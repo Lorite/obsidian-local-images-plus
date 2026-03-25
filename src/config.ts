@@ -87,7 +87,9 @@ export interface ISettings {
   DateFormat: string;
   ImgCompressionType:string;
   ExcludedFoldersList:string;
-  ExcludedFoldersListRegexp: string
+  ExcludedFoldersListRegexp: string;
+  mirrorObsFolderForMatchedNotes: boolean;
+  mirrorObsFolderMatchPattern: string;
 }
 
 export const DEFAULT_SETTINGS: ISettings = {
@@ -118,5 +120,7 @@ export const DEFAULT_SETTINGS: ISettings = {
   DateFormat: "YYYY MM DD",
   ImgCompressionType: "image/jpeg",
   ExcludedFoldersList: "",
-  ExcludedFoldersListRegexp: ""
+  ExcludedFoldersListRegexp: "",
+  mirrorObsFolderForMatchedNotes: false,
+  mirrorObsFolderMatchPattern: "media/.*"
 };
