@@ -15,6 +15,7 @@ import {
   getMDir,
   getRDir,
   FrontMatterParser,
+  processFrontMatterUrls,
 } from "./contentProcessor"
 
 import {
@@ -321,10 +322,18 @@ export default class LocalImagesPlugin extends Plugin {
 
     const content = await this.app.vault.cachedRead(file)
     if (content.length == 0) {return null}
+
+    const frontmatterResult = await processFrontMatterUrls(this,
+      file,
+      this.settings,
+      defaultdir
+    )
+
+    const contentAfterFrontmatter = await this.app.vault.cachedRead(file)
       
 
     const fixedContent = await replaceAsync(
-      content,
+      contentAfterFrontmatter,
       MD_SEARCH_PATTERN,
       imageTagProcessor(this,
         file,
@@ -334,14 +343,20 @@ export default class LocalImagesPlugin extends Plugin {
     )
 
 
+    const contentChanged = contentAfterFrontmatter != fixedContent[0]
+    const hasChanges = frontmatterResult.changed || contentChanged
+    const hasErrors = frontmatterResult.error || fixedContent[1] === true
+    const createdFiles = [...frontmatterResult.filesArr, ...fixedContent[2]]
 
 
 
-    if (content != fixedContent[0] && fixedContent[1] === false) {
+    if (hasChanges && hasErrors === false) {
       this.modifiedQueue.remove(file)
-      await this.app.vault.modify(file, fixedContent[0])
+      if (contentChanged) {
+        await this.app.vault.modify(file, fixedContent[0])
+      }
 
-      fixedContent[2].forEach((element: string) => {
+      createdFiles.forEach((element: string) => {
         this.newfCreatedByDownloader.push(element)
       })
 
@@ -349,12 +364,14 @@ export default class LocalImagesPlugin extends Plugin {
 
     }
 
-    else if (content != fixedContent[0] && fixedContent[1] === true) {
+    else if (hasChanges && hasErrors === true) {
 
       this.modifiedQueue.remove(file)
-      await this.app.vault.modify(file, fixedContent[0])
+      if (contentChanged) {
+        await this.app.vault.modify(file, fixedContent[0])
+      }
 
-      fixedContent[2].forEach((element: string) => {
+      createdFiles.forEach((element: string) => {
         this.newfCreatedByDownloader.push(element)
       })
 

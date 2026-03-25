@@ -202,6 +202,127 @@ export function imageTagProcessor(app: Plugin,
 }
 
 
+type FrontmatterUrlCandidate = {
+  key: string;
+  index?: number;
+  value: string;
+};
+
+type FrontmatterUrlUpdate = {
+  key: string;
+  index?: number;
+  value: string;
+};
+
+function toFrontmatterWikilink(localizedValue: string): string {
+  if (!localizedValue) {
+    return localizedValue;
+  }
+
+  if (localizedValue.startsWith("![[") && localizedValue.endsWith("]]")) {
+    return localizedValue.slice(1);
+  }
+
+  const mdLinkMatch = localizedValue.match(/^!\[[^\]]*\]\((.+)\)$/);
+  if (mdLinkMatch?.[1]) {
+    const pathValue = trimAny(mdLinkMatch[1], [" "]);
+    return `[[${decodeURI(pathValue)}]]`;
+  }
+
+  return localizedValue;
+}
+
+export async function processFrontMatterUrls(app: Plugin,
+  noteFile: TFile,
+  settings: ISettings,
+  defaultdir: boolean
+) {
+
+  const frontmatterCandidates: FrontmatterUrlCandidate[] = [];
+  const updates: FrontmatterUrlUpdate[] = [];
+  let changed = false;
+  let error = false;
+  const filesArr: Array<string> = [];
+
+  await app.app.fileManager.processFrontMatter(noteFile, (frontmatter: any): any => {
+    if (!frontmatter) {
+      return frontmatter;
+    }
+
+    Object.entries(frontmatter).forEach(([key, value]) => {
+      if (typeof value === "string") {
+        const trimmedValue = value.trim();
+        if (isUrl(trimmedValue)) {
+          frontmatterCandidates.push({ key, value: trimmedValue });
+        }
+      }
+
+      if (Array.isArray(value)) {
+        value.forEach((arrVal, index) => {
+          if (typeof arrVal === "string") {
+            const trimmedValue = arrVal.trim();
+            if (isUrl(trimmedValue)) {
+              frontmatterCandidates.push({ key, index, value: trimmedValue });
+            }
+          }
+        });
+      }
+    });
+
+    return frontmatter;
+  });
+
+  if (!frontmatterCandidates.length) {
+    return { changed, error, filesArr };
+  }
+
+  const processImageTag = imageTagProcessor(app, noteFile, settings, defaultdir);
+
+  for (const candidate of frontmatterCandidates) {
+    const result = await processImageTag(candidate.value, "", candidate.value, "", "");
+
+    if (result === null) {
+      error = true;
+      continue;
+    }
+
+    const newValue = toFrontmatterWikilink(result[1]);
+    if (newValue && newValue !== candidate.value) {
+      updates.push({ key: candidate.key, index: candidate.index, value: newValue });
+      filesArr.push(newValue);
+      changed = true;
+    }
+  }
+
+  if (!updates.length) {
+    return { changed, error, filesArr };
+  }
+
+  await app.app.fileManager.processFrontMatter(noteFile, (frontmatter: any): any => {
+    if (!frontmatter) {
+      return frontmatter;
+    }
+
+    updates.forEach((update) => {
+      if (update.index === undefined) {
+        if (typeof frontmatter[update.key] === "string") {
+          frontmatter[update.key] = update.value;
+        }
+        return;
+      }
+
+      if (Array.isArray(frontmatter[update.key]) && typeof frontmatter[update.key][update.index] === "string") {
+        frontmatter[update.key][update.index] = update.value;
+      }
+    });
+
+    return frontmatter;
+  });
+
+  return { changed, error, filesArr };
+}
+
+
 
 
 
