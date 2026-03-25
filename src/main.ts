@@ -127,6 +127,12 @@ export default class LocalImagesPlugin extends Plugin {
         name: "Remove all orphaned attachments (Plugin folder)",
         callback: () => { this.removeOrphans("plugin")() },
       })
+
+      this.addCommand({
+        id: "migrate-media-note-attachments-to-mirrored-obsidian-folders",
+        name: "Migrate existing attachments for media notes to mirrored Obsidian folders",
+        callback: this.migrateMediaNoteAttachments,
+      })
     }
 
 
@@ -399,7 +405,6 @@ export default class LocalImagesPlugin extends Plugin {
 
   processAllPages = async () => {
     const files = this.app.vault.getMarkdownFiles()
- 
     const pagesCount = files.length
 
     const notice = this.settings.showNotifications
@@ -429,6 +434,144 @@ export default class LocalImagesPlugin extends Plugin {
         notice.hide()
       }, NOTICE_TIMEOUT)
     }
+  }
+
+  private migrateMediaNoteAttachments = async () => {
+    const mediaNoteFolderPattern = /^media(?:\/.*)?$/i
+    let notesChecked = 0
+    let refsChecked = 0
+    let movedCount = 0
+    let skippedAlreadyMirrored = 0
+    let skippedNonAttachment = 0
+    let skippedUnresolved = 0
+    let moveErrors = 0
+    const alreadyProcessed = new Set<string>()
+
+    const allNotes = this.app.vault.getMarkdownFiles().filter((note) => mediaNoteFolderPattern.test(String(note.parent?.path || "")))
+
+    if (!allNotes.length) {
+      showBalloon("No notes under media/... were found.", this.settings.showNotifications)
+      return
+    }
+
+    for (const note of allNotes) {
+      notesChecked++
+      const noteParent = String(note.parent?.path || "")
+      const obsRoot = this.resolveObsidianAttachmentRoot(note)
+      const mediaRootPrefix = this.normPath(pathJoin([obsRoot, "media"]))
+      const destinationDir = trimAny(pathJoin([obsRoot, noteParent]), ["/", "\\"])
+
+      const cache: any = this.app.metadataCache.getFileCache(note)
+      const refs = [
+        ...(cache?.embeds || []),
+        ...(cache?.links || []),
+      ]
+
+      if (!refs.length) {
+        continue
+      }
+
+      await this.ensureFolderExists(destinationDir)
+
+      for (const ref of refs) {
+        refsChecked++
+        const linkValue = trimAny(String(ref?.link || ""), [" "])
+
+        if (!linkValue || linkValue.match(/^(https?:|data:|file:\/\/)/i)) {
+          skippedNonAttachment++
+          continue
+        }
+
+        const targetFile = this.app.metadataCache.getFirstLinkpathDest(linkValue, note.path)
+        if (!(targetFile instanceof TFile)) {
+          skippedUnresolved++
+          continue
+        }
+
+        if (this.ExemplaryOfMD(targetFile.path) || this.ExemplaryOfCANVAS(targetFile.path)) {
+          skippedNonAttachment++
+          continue
+        }
+
+        const sourcePath = this.normPath(targetFile.path)
+        if (sourcePath.startsWith(mediaRootPrefix + "/") || sourcePath === mediaRootPrefix) {
+          skippedAlreadyMirrored++
+          continue
+        }
+
+        if (alreadyProcessed.has(sourcePath)) {
+          continue
+        }
+
+        try {
+          const destinationPath = await this.getUniqueDestinationPath(destinationDir, targetFile.name)
+          const destinationPathNorm = this.normPath(destinationPath)
+
+          if (destinationPathNorm !== sourcePath) {
+            await this.app.fileManager.renameFile(targetFile, destinationPath)
+            movedCount++
+          }
+
+          alreadyProcessed.add(sourcePath)
+          alreadyProcessed.add(destinationPathNorm)
+        } catch (e) {
+          moveErrors++
+          logError("Failed to move attachment: " + sourcePath + "\r\n" + e)
+        }
+      }
+    }
+
+    const summary = [
+      "Migration finished.",
+      "Media notes scanned: " + notesChecked,
+      "References scanned: " + refsChecked,
+      "Moved: " + movedCount,
+      "Skipped (already under Obsidian media root): " + skippedAlreadyMirrored,
+      "Skipped (non-attachment/external): " + skippedNonAttachment,
+      "Skipped (unresolved): " + skippedUnresolved,
+      "Errors: " + moveErrors,
+    ].join("\r\n")
+
+    showBalloon(summary, this.settings.showNotifications)
+    logError(summary)
+  }
+
+  private async getUniqueDestinationPath(directoryPath: string, fileName: string): Promise<string> {
+    const parsed = path.parse(fileName)
+    let candidatePath = trimAny(pathJoin([directoryPath, fileName]), ["/", "\\"])
+    let idx = 1
+
+    while (await this.app.vault.adapter.exists(candidatePath)) {
+      const candidateName = cFileName(parsed.name + " (" + idx + ")" + parsed.ext)
+      candidatePath = trimAny(pathJoin([directoryPath, candidateName]), ["/", "\\"])
+      idx++
+    }
+
+    return candidatePath
+  }
+
+  private resolveObsidianAttachmentRoot(noteFile: TFile): string {
+    const obsmediadir = this.app.vault.getConfig("attachmentFolderPath")
+    let root = "/"
+
+    if (obsmediadir === "/") {
+      root = obsmediadir
+    }
+    else if (obsmediadir === "./") {
+      root = pathJoin([noteFile.parent.path])
+    }
+    else if (obsmediadir.match(/\.\/.+/g) !== null) {
+      root = pathJoin([noteFile.parent.path, obsmediadir.replace('./', '')])
+    }
+    else {
+      root = obsmediadir.replace(/\\/g, "/")
+    }
+
+    return trimAny(root, ["/", "\\"])
+  }
+
+  private normPath(filePath: string): string {
+    return trimAny(String(filePath || "").replace(/\\/g, "/"), ["/", "\\"])
   }
 
 
