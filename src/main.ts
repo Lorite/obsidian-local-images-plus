@@ -50,6 +50,8 @@ import { ModalW1 } from "./modal"
 import { isNull } from "util"
 const fs = require('fs').promises;
 
+const PROCESS_ALL_NOTE_TIMEOUT_MS = 60 * 1000;
+
 
 
 
@@ -406,6 +408,9 @@ export default class LocalImagesPlugin extends Plugin {
   processAllPages = async () => {
     const files = this.app.vault.getMarkdownFiles()
     const pagesCount = files.length
+    let processedCount = 0
+    let failedCount = 0
+    let timeoutCount = 0
 
     const notice = this.settings.showNotifications
 
@@ -420,15 +425,41 @@ export default class LocalImagesPlugin extends Plugin {
         if (notice) {
           //setMessage() is undeclared but factically existing, so ignore the TS error  //@ts-expect-error
           notice.setMessage(
-            APP_TITLE + `\nProcessing \n"${file.path}" \nPage ${index} of ${pagesCount}`
+            APP_TITLE + `\nProcessing \n"${file.path}" \nPage ${index + 1} of ${pagesCount}`
           )
         }
-        await this.processPage(file)
+
+        try {
+          await Promise.race([
+            this.processPage(file),
+            new Promise((_, reject) => {
+              setTimeout(() => reject(new Error("PROCESS_ALL_PAGE_TIMEOUT")), PROCESS_ALL_NOTE_TIMEOUT_MS)
+            })
+          ])
+          processedCount++
+        } catch (e) {
+          const err = e instanceof Error ? e : new Error(String(e))
+          if (err.message === "PROCESS_ALL_PAGE_TIMEOUT") {
+            timeoutCount++
+            logError(`Processing timeout for note: ${file.path}`)
+            showBalloon(`WARNING!\r\nTimeout while processing "${file.path}". Continuing...`, this.settings.showNotifications)
+          } else {
+            failedCount++
+            logError(`Processing failed for note: ${file.path}\r\n${err}`)
+            showBalloon(`WARNING!\r\nError while processing "${file.path}". Continuing...`, this.settings.showNotifications)
+          }
+        }
       }
     }
     if (notice) {
       // dum @ts-expect-error
-      notice.setMessage(APP_TITLE + `\n${pagesCount} pages were processed.`)
+      notice.setMessage(
+        APP_TITLE +
+        `\nCompleted.` +
+        `\nProcessed: ${processedCount}` +
+        `\nTimed out: ${timeoutCount}` +
+        `\nFailed: ${failedCount}`
+      )
 
       setTimeout(() => {
         notice.hide()
